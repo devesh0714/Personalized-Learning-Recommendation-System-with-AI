@@ -1,89 +1,77 @@
-import OpenAI from "openai";
+import fetch from "node-fetch";
 
-const buildPrompt = ({ user, interests, summary, recommendations }) => `
-You are an AI learning coach for a personalized learning recommendation system.
+export const generateAiInsights = async ({
+  user,
+  interests,
+  summary,
+  recommendations
+}) => {
+  try {
+    // Extract interest names
+    const interestNames = interests.map(i => i.name).join(", ");
 
-Student profile:
-- Name: ${user.name}
-- Level: ${user.currentLevel}
-- Interests: ${interests.map((interest) => interest.name).join(", ") || "None"}
+    // Create prompt
+    const prompt = `
+You are an AI learning assistant.
 
-Learning summary:
-- Topics tracked: ${summary.totalTopics}
-- Topics completed: ${summary.completedTopics}
-- Overall average completion: ${summary.averageCompletion}%
-- Total time spent: ${summary.totalTimeSpentMinutes} minutes
-- Weak areas: ${
-  summary.weakAreas.length
-    ? summary.weakAreas
-        .map((area) => `${area.topic} (${area.category}, ${area.progressPercentage}%)`)
-        .join("; ")
-    : "No major weak areas identified"
-}
+User interests: ${interestNames}
+Learning summary: ${summary}
 
-Rule-based recommendations:
-${recommendations.map((item, index) => `${index + 1}. ${item.title} - ${item.reason}`).join("\n") || "None"}
+Existing recommendations:
+${recommendations.map(r => r.title).join(", ")}
 
-Return JSON only with this shape:
+Your task:
+1. Give a short headline
+2. Give 5 learning suggestions
+
+Respond ONLY in JSON format like:
 {
-  "headline": "short summary",
-  "insights": [
-    "You should learn X next",
-    "You are weak in Y",
-    "Recommended next step is Z"
-  ]
+  "headline": "....",
+  "insights": ["...", "...", "..."]
 }
 `;
 
-const createMockInsights = ({ interests, summary, recommendations }) => {
-  const firstInterest = interests[0]?.name || "your selected path";
-  const firstWeakArea = summary.weakAreas[0]?.topic || `core ${firstInterest} fundamentals`;
-  const topRecommendation = recommendations[0]?.title || `Continue with ${firstInterest}`;
+    // Call Ollama API
+    const response = await fetch("http://localhost:11434/api/generate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        model: "llama3",
+        prompt: prompt,
+        stream: false
+      })
+    });
 
-  return {
-    headline: `Focus on consistency in ${firstInterest}`,
-    insights: [
-      `You should learn ${topRecommendation.replace(/^Learn /, "").replace(/ next$/, "")} next.`,
-      `You are currently weak in ${firstWeakArea}.`,
-      `Recommended next step is to spend 30 focused minutes reviewing fundamentals and then complete one new topic.`
-    ]
-  };
-};
+    const data = await response.json();
 
-export const generateAiInsights = async ({ user, interests, summary, recommendations }) => {
-  const prompt = buildPrompt({ user, interests, summary, recommendations });
+    // Try parsing AI response
+    let parsed;
+    try {
+      parsed = JSON.parse(data.response);
+    } catch (err) {
+      parsed = {
+        headline: "Learning Recommendations",
+        insights: [data.response]
+      };
+    }
 
-  if (!process.env.OPENAI_API_KEY) {
     return {
-      provider: "mock",
-      prompt,
-      result: createMockInsights({ interests, summary, recommendations })
+      provider: "ollama",
+      result: parsed
+    };
+
+  } catch (error) {
+    console.error("Ollama error:", error.message);
+
+    // Fallback (VERY IMPORTANT)
+    return {
+      provider: "fallback",
+      result: {
+        headline: "Basic Recommendations",
+        insights: recommendations.map(r => r.title)
+      }
     };
   }
-
-  const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const completion = await client.chat.completions.create({
-    model: "gpt-4o-mini",
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: "You are a concise educational recommendation assistant."
-      },
-      {
-        role: "user",
-        content: prompt
-      }
-    ],
-    temperature: 0.5
-  });
-
-  const content = completion.choices[0]?.message?.content || "{}";
-  const parsed = JSON.parse(content);
-
-  return {
-    provider: "openai",
-    prompt,
-    result: parsed
-  };
 };

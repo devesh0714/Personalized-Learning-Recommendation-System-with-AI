@@ -3,7 +3,8 @@ import { api } from "../api/client.js";
 
 const AuthContext = createContext(null);
 
-const storageKey = "learning-platform-auth";
+// ✅ use SAME key everywhere
+const storageKey = "token";
 
 export const AuthProvider = ({ children }) => {
   const [token, setToken] = useState(() => localStorage.getItem(storageKey));
@@ -18,9 +19,15 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        const response = await api.getProfile(token);
-        setUser(response.data);
+        // optional: if you have profile API
+        if (api.getProfile) {
+          const response = await api.getProfile(token);
+          setUser(response.data);
+        }
       } catch (error) {
+        console.error("Auth error:", error.message);
+
+        // ❌ remove invalid token
         localStorage.removeItem(storageKey);
         setToken(null);
         setUser(null);
@@ -33,7 +40,9 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const handleAuth = (payload) => {
+    // ✅ store token correctly
     localStorage.setItem(storageKey, payload.token);
+
     setToken(payload.token);
     setUser(payload.user);
   };

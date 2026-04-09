@@ -17,6 +17,7 @@ const LoginPage = () => {
 
     try {
       const response = await api.login(form);
+      //localStorage.setItem("token", response.data.token);
       handleAuth(response.data);
       navigate("/dashboard");
     } catch (submitError) {
