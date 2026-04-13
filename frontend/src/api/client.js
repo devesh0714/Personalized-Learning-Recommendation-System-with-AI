@@ -22,8 +22,18 @@ const request = async (path, { method = "GET", body, token } = {}) => {
 export const api = {
   register: (payload) => request("/auth/register", { method: "POST", body: payload }),
   login: (payload) => request("/auth/login", { method: "POST", body: payload }),
+  getProfile: (token) => request("/auth/me", { token }),
+  getDomains: () => request("/domains"),
+  getDomain: (domainId) => request(`/domains/${domainId}`),
+  getInterests: (token) => request("/interests", { token }),
+  saveInterests: (token, payload) =>
+    request("/interests", { method: "POST", body: { interests: payload }, token }),
+  getLearningPaths: (token) => request("/learning-paths", { token }),
+  generateLearningPath: (token, payload) =>
+    request("/learning-paths", { method: "POST", body: payload, token }),
+  getLearningPathByDomain: (token, domainId) => request(`/learning-paths/${domainId}`, { token }),
   getRecommendations: (token) => request("/recommendations", { token }),
   getProgress: (token) => request("/progress", { token }),
   saveProgress: (token, payload) =>
-    request("/progress", { method: "POST", body: payload, token }),
+    request("/progress", { method: "POST", body: payload, token })
 };

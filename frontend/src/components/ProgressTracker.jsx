@@ -1,5 +1,5 @@
 const ProgressTracker = ({ summary, progress }) => (
-  <section className="glass-card">
+  <section className="panel">
     <div className="section-heading">
       <div>
         <p className="eyebrow">Learning tracking</p>
@@ -21,20 +21,33 @@ const ProgressTracker = ({ summary, progress }) => (
       </div>
     </div>
 
+    <div className="domain-summary-grid">
+      {summary.progressByDomain?.map((domain) => (
+        <div key={domain.domainId || domain.domain} className="domain-summary">
+          <strong>{domain.domain}</strong>
+          <span>
+            {domain.completedTopics}/{domain.totalPathTopics} topics • {domain.averageCompletion}% average
+          </span>
+        </div>
+      ))}
+    </div>
+
     <div className="progress-list">
       {progress.map((entry) => (
         <div key={entry._id} className="progress-item">
           <div className="progress-copy">
             <h3>{entry.topic}</h3>
             <p>
-              {entry.category} • {entry.difficulty}
+              {entry.domain?.name || entry.category} • {entry.subdomain?.name || "General"} • {entry.difficulty}
             </p>
           </div>
           <div className="progress-meter">
             <div className="progress-bar">
               <span style={{ width: `${entry.progressPercentage}%` }} />
             </div>
-            <small>{entry.progressPercentage}%</small>
+            <small>
+              {entry.progressPercentage}%{entry.accuracy !== null ? ` • ${entry.accuracy}% accuracy` : ""}
+            </small>
           </div>
         </div>
       ))}

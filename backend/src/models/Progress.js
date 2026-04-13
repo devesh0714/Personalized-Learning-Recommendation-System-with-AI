@@ -7,10 +7,26 @@ const progressSchema = new mongoose.Schema(
       ref: "User",
       required: true
     },
+    domain: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Domain"
+    },
+    subdomain: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Subdomain"
+    },
+    topicRef: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Topic"
+    },
     topic: {
       type: String,
       required: true,
       trim: true
+    },
+    subtopic: {
+      type: String,
+      default: ""
     },
     category: {
       type: String,
@@ -32,6 +48,12 @@ const progressSchema = new mongoose.Schema(
       min: 0,
       default: 0
     },
+    accuracy: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: null
+    },
     difficulty: {
       type: String,
       enum: ["Beginner", "Intermediate", "Advanced"],
@@ -47,7 +69,9 @@ const progressSchema = new mongoose.Schema(
   }
 );
 
-progressSchema.index({ user: 1, topic: 1 }, { unique: true });
+progressSchema.index({ user: 1, topicRef: 1 }, { unique: true, sparse: true });
+progressSchema.index({ user: 1, topic: 1 });
+progressSchema.index({ user: 1, domain: 1, updatedAt: -1 });
 
 const Progress = mongoose.model("Progress", progressSchema);
 

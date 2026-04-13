@@ -1,37 +1,25 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/client.js";
+import AIInsightPanel from "../components/AIInsightPanel.jsx";
 import Layout from "../components/Layout.jsx";
+import LearningPathViewer from "../components/LearningPathViewer.jsx";
 import ProgressTracker from "../components/ProgressTracker.jsx";
-import RecommendationCard from "../components/RecommendationCard.jsx";
+import RecommendationPanel from "../components/RecommendationPanel.jsx";
 import { useAuth } from "../context/AuthContext.jsx";
-
-const starterProgress = [
-  {
-    topic: "Arrays and Strings",
-    category: "DSA",
-    progressPercentage: 100,
-    timeSpentMinutes: 120,
-    completed: true,
-    difficulty: "Beginner",
-    notes: "Comfortable solving easy problems."
-  },
-  {
-    topic: "Supervised Learning Fundamentals",
-    category: "AI",
-    progressPercentage: 45,
-    timeSpentMinutes: 80,
-    completed: false,
-    difficulty: "Beginner",
-    notes: "Need practice with evaluation metrics."
-  }
-];
 
 const DashboardPage = () => {
   const { token, user } = useAuth();
   const [dashboard, setDashboard] = useState({
     progress: [],
-    summary: { completedTopics: 0, averageCompletion: 0, totalTimeSpentMinutes: 0 },
+    summary: {
+      completedTopics: 0,
+      averageCompletion: 0,
+      totalTimeSpentMinutes: 0,
+      progressByDomain: []
+    },
     recommendations: [],
+    learningPaths: [],
     ai: { result: { headline: "", insights: [] }, prompt: "" }
   });
   const [loading, setLoading] = useState(true);
@@ -42,16 +30,18 @@ const DashboardPage = () => {
     setLoading(true);
 
     try {
-      const [progressResponse, recommendationResponse] = await Promise.all([
+      const [progressResponse, recommendationResponse, pathResponse] = await Promise.all([
         api.getProgress(token),
-        api.getRecommendations(token)
+        api.getRecommendations(token),
+        api.getLearningPaths(token)
       ]);
 
       setDashboard({
         progress: progressResponse.data.progress,
         summary: progressResponse.data.summary,
         recommendations: recommendationResponse.data.recommendations,
-        ai: recommendationResponse.data.ai
+        ai: recommendationResponse.data.ai,
+        learningPaths: pathResponse.data
       });
       setError("");
     } catch (loadError) {
@@ -69,7 +59,26 @@ const DashboardPage = () => {
     setSyncingSample(true);
 
     try {
-      await Promise.all(starterProgress.map((entry) => api.saveProgress(token, entry)));
+      const topics = dashboard.learningPaths
+        .flatMap((path) =>
+          path.milestones.flatMap((milestone) =>
+            milestone.topics.map((entry) => ({ path, entry }))
+          )
+        )
+        .slice(0, 3);
+
+      await Promise.all(
+        topics.map(({ path, entry }, index) =>
+          api.saveProgress(token, {
+            topicId: entry.topic?._id || entry.topic,
+            completed: index === 0,
+            progressPercentage: index === 0 ? 100 : 45 + index * 15,
+            timeSpentMinutes: entry.topic?.estimatedMinutes || 60,
+            accuracy: index === 0 ? 88 : 58 + index * 8,
+            notes: `Sample progress for ${path.domain?.name}.`
+          })
+        )
+      );
       await loadDashboard();
     } finally {
       setSyncingSample(false);
@@ -85,57 +94,51 @@ const DashboardPage = () => {
       title={`Welcome, ${user?.name || "Learner"}`}
       subtitle="Track growth, review recommendations, and use AI coaching to focus your next session."
     >
-      <section className="hero-grid">
-        <div className="glass-card spotlight-card">
-          <p className="eyebrow">AI insight</p>
-          <h2>{dashboard.ai.result.headline || "Start tracking progress to unlock guidance"}</h2>
-          <div className="insight-list">
-            {dashboard.ai.result.insights?.map((insight) => (
-              <p key={insight}>{insight}</p>
-            ))}
+      <section className="dashboard-hero panel">
+        <div className="hero-copy">
+          <p className="eyebrow">Multi-domain learning</p>
+          <h2>Plan the next session with progress-aware recommendations.</h2>
+          <p className="lead-text">
+            Your roadmap, weak areas, and AI insights update as you complete topics.
+          </p>
+          <div className="actions-row">
+            <Link className="button-link" to="/interests">Choose domains</Link>
+            <Link className="button-link secondary-button" to="/learning-paths">View paths</Link>
           </div>
-          <details>
-            <summary>AI prompt used</summary>
-            <pre>{dashboard.ai.prompt}</pre>
-          </details>
         </div>
+        <img
+          className="hero-image"
+          src="https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=900&q=80"
+          alt="Learner using a laptop with study notes"
+        />
+      </section>
 
-        <div className="glass-card action-card">
+      <section className="hero-grid">
+        <AIInsightPanel ai={dashboard.ai} />
+
+        <div className="panel action-card">
           <p className="eyebrow">Quick start</p>
           <h2>Populate demo learning history</h2>
           <p className="muted">
-            This adds a few progress entries so the recommendation engine has enough signal.
+            This adds progress entries from your generated learning paths so the engines have signal.
           </p>
-          <button type="button" onClick={addSampleProgress} disabled={syncingSample}>
+          <button
+            type="button"
+            onClick={addSampleProgress}
+            disabled={syncingSample || dashboard.learningPaths.length === 0}
+          >
             {syncingSample ? "Syncing sample data..." : "Add sample progress"}
           </button>
+          {dashboard.learningPaths.length === 0 ? (
+            <p className="muted">Generate a learning path first.</p>
+          ) : null}
           {error ? <p className="error-text">{error}</p> : null}
         </div>
       </section>
 
       <ProgressTracker summary={dashboard.summary} progress={dashboard.progress} />
-
-      <section className="recommendation-section">
-        <div className="section-heading">
-          <div>
-            <p className="eyebrow">Recommendations</p>
-            <h2>Next best learning steps</h2>
-          </div>
-        </div>
-
-        <div className="recommendation-grid">
-          {dashboard.recommendations.map((recommendation) => (
-            <RecommendationCard key={recommendation._id} recommendation={recommendation} />
-          ))}
-          {!dashboard.recommendations.length ? (
-            <div className="glass-card">
-              <p className="muted">
-                Add interests and progress entries to generate recommendations.
-              </p>
-            </div>
-          ) : null}
-        </div>
-      </section>
+      <LearningPathViewer paths={dashboard.learningPaths} compact />
+      <RecommendationPanel recommendations={dashboard.recommendations} />
     </Layout>
   );
 };

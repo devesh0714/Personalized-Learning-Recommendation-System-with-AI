@@ -2,8 +2,6 @@ import { createContext, useContext, useEffect, useState } from "react";
 import { api } from "../api/client.js";
 
 const AuthContext = createContext(null);
-
-// ✅ use SAME key everywhere
 const storageKey = "token";
 
 export const AuthProvider = ({ children }) => {
@@ -19,15 +17,10 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        // optional: if you have profile API
-        if (api.getProfile) {
-          const response = await api.getProfile(token);
-          setUser(response.data);
-        }
+        const response = await api.getProfile(token);
+        setUser(response.data);
       } catch (error) {
         console.error("Auth error:", error.message);
-
-        // ❌ remove invalid token
         localStorage.removeItem(storageKey);
         setToken(null);
         setUser(null);
@@ -40,9 +33,7 @@ export const AuthProvider = ({ children }) => {
   }, [token]);
 
   const handleAuth = (payload) => {
-    // ✅ store token correctly
     localStorage.setItem(storageKey, payload.token);
-
     setToken(payload.token);
     setUser(payload.user);
   };
@@ -54,15 +45,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        token,
-        user,
-        loading,
-        handleAuth,
-        logout
-      }}
-    >
+    <AuthContext.Provider value={{ token, user, loading, handleAuth, logout }}>
       {children}
     </AuthContext.Provider>
   );

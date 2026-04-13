@@ -7,7 +7,7 @@ const Layout = ({ title, subtitle, children }) => {
 
   return (
     <div className="page-shell">
-      <header className="topbar glass-card">
+      <header className="topbar panel">
         <div>
           <p className="eyebrow">AI learning system</p>
           <h1>{title}</h1>
@@ -19,12 +19,18 @@ const Layout = ({ title, subtitle, children }) => {
               Dashboard
             </Link>
             <Link className={pathname === "/interests" ? "active-link" : ""} to="/interests">
-              Interests
+              Domains
+            </Link>
+            <Link
+              className={pathname === "/learning-paths" ? "active-link" : ""}
+              to="/learning-paths"
+            >
+              Paths
             </Link>
           </nav>
           <div className="user-chip">
             <span>{user?.name}</span>
-            <button type="button" onClick={logout}>
+            <button type="button" className="secondary-button" onClick={logout}>
               Logout
             </button>
           </div>

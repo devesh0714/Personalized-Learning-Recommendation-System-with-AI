@@ -1,6 +1,15 @@
 import User from "../models/User.js";
 import generateToken from "../utils/generateToken.js";
 
+const serializeUser = (user) => ({
+  id: user._id,
+  name: user.name,
+  email: user.email,
+  bio: user.bio,
+  currentLevel: user.currentLevel,
+  selectedDomains: user.selectedDomains
+});
+
 export const registerUser = async (req, res, next) => {
   try {
     const { name, email, password, bio, currentLevel } = req.body;
@@ -30,13 +39,7 @@ export const registerUser = async (req, res, next) => {
       success: true,
       data: {
         token: generateToken(user._id),
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          bio: user.bio,
-          currentLevel: user.currentLevel
-        }
+        user: serializeUser(user)
       }
     });
   } catch (error) {
@@ -66,13 +69,7 @@ export const loginUser = async (req, res, next) => {
       success: true,
       data: {
         token: generateToken(user._id),
-        user: {
-          id: user._id,
-          name: user.name,
-          email: user.email,
-          bio: user.bio,
-          currentLevel: user.currentLevel
-        }
+        user: serializeUser(user)
       }
     });
   } catch (error) {
@@ -81,8 +78,12 @@ export const loginUser = async (req, res, next) => {
 };
 
 export const getProfile = async (req, res) => {
+  const user = await User.findById(req.user._id)
+    .select("-password")
+    .populate("selectedDomains.domain", "name slug category");
+
   res.json({
     success: true,
-    data: req.user
+    data: serializeUser(user)
   });
 };

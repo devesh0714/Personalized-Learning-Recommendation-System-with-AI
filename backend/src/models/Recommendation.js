@@ -7,6 +7,14 @@ const recommendationSchema = new mongoose.Schema(
       ref: "User",
       required: true
     },
+    domain: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Domain"
+    },
+    topic: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Topic"
+    },
     source: {
       type: String,
       enum: ["rule-based", "ai"],
@@ -34,15 +42,27 @@ const recommendationSchema = new mongoose.Schema(
       max: 5,
       default: 3
     },
+    nextTopic: {
+      title: { type: String, default: "" },
+      difficulty: { type: String, default: "" },
+      subdomain: { type: String, default: "" }
+    },
     actionUrl: {
       type: String,
       default: ""
+    },
+    aiPayload: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null
     }
   },
   {
     timestamps: true
   }
 );
+
+recommendationSchema.index({ user: 1, source: 1, createdAt: -1 });
+recommendationSchema.index({ user: 1, domain: 1 });
 
 const Recommendation = mongoose.model("Recommendation", recommendationSchema);
 

@@ -1,7 +1,9 @@
 import cors from "cors";
 import express from "express";
 import authRoutes from "./routes/authRoutes.js";
+import domainRoutes from "./routes/domainRoutes.js";
 import interestRoutes from "./routes/interestRoutes.js";
+import learningPathRoutes from "./routes/learningPathRoutes.js";
 import progressRoutes from "./routes/progressRoutes.js";
 import recommendationRoutes from "./routes/recommendationRoutes.js";
 import { errorHandler, notFound } from "./middleware/errorHandler.js";
@@ -21,7 +23,9 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/domains", domainRoutes);
 app.use("/api/interests", interestRoutes);
+app.use("/api/learning-paths", learningPathRoutes);
 app.use("/api/progress", progressRoutes);
 app.use("/api/recommendations", recommendationRoutes);
 

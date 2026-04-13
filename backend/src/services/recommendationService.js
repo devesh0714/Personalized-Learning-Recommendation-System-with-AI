@@ -1,6 +1,12 @@
+import LearningPath from "../models/LearningPath.js";
 import Progress from "../models/Progress.js";
 import Recommendation from "../models/Recommendation.js";
-import { topicCatalog } from "../data/sampleCatalog.js";
+
+const difficultyWeight = {
+  Beginner: 1,
+  Intermediate: 2,
+  Advanced: 3
+};
 
 const averageProgress = (items) => {
   if (!items.length) {
@@ -11,48 +17,123 @@ const averageProgress = (items) => {
   return Math.round(total / items.length);
 };
 
-export const buildRuleBasedRecommendations = async (userId, interests, progressEntries) => {
+const getTopicResource = (topic) => topic?.resources?.[0]?.url || "";
+
+const flattenPathTopics = (path) =>
+  path.milestones.flatMap((milestone) =>
+    milestone.topics.map((entry) => ({
+      milestone,
+      pathTopic: entry,
+      topic: entry.topic
+    }))
+  );
+
+export const buildRuleBasedRecommendations = async (userId) => {
+  const [paths, progressEntries] = await Promise.all([
+    LearningPath.find({ user: userId, status: "active" })
+      .populate("domain")
+      .populate("milestones.subdomain")
+      .populate("milestones.topics.topic"),
+    Progress.find({ user: userId })
+  ]);
+
+  const completedTopicIds = new Set(
+    progressEntries
+      .filter((item) => item.completed && item.topicRef)
+      .map((item) => String(item.topicRef))
+  );
+
+  const progressByTopicId = new Map(
+    progressEntries.filter((item) => item.topicRef).map((item) => [String(item.topicRef), item])
+  );
+
   const freshRecommendations = [];
 
-  for (const interest of interests) {
-    const catalog = topicCatalog[interest.name] || [];
-    const categoryProgress = progressEntries.filter(
-      (item) => item.category.toLowerCase() === interest.name.toLowerCase()
-    );
-    const completedTopics = new Set(
-      categoryProgress.filter((item) => item.completed).map((item) => item.topic.toLowerCase())
-    );
+  for (const path of paths) {
+    const orderedTopics = flattenPathTopics(path)
+      .filter((entry) => entry.topic)
+      .sort((a, b) => {
+        const difficultyDelta =
+          difficultyWeight[a.topic.difficulty] - difficultyWeight[b.topic.difficulty];
+        if (difficultyDelta !== 0) {
+          return difficultyDelta;
+        }
+        return a.milestone.order - b.milestone.order || a.pathTopic.order - b.pathTopic.order;
+      });
 
-    const nextTopic = catalog.find((topic) => !completedTopics.has(topic.topic.toLowerCase()));
+    const nextEntry = orderedTopics.find((entry) => !completedTopicIds.has(String(entry.topic._id)));
 
-    if (nextTopic) {
+    if (nextEntry) {
       freshRecommendations.push({
         user: userId,
+        domain: path.domain._id,
+        topic: nextEntry.topic._id,
         source: "rule-based",
-        title: `Learn ${nextTopic.topic} next`,
-        description: `Continue your ${interest.name} journey with ${nextTopic.topic}.`,
-        category: interest.name,
-        reason:
-          categoryProgress.length === 0
-            ? `You selected ${interest.name} as an interest but have not started yet.`
-            : `This is the next uncovered topic after your completed work in ${interest.name}.`,
-        priority: interest.priority,
-        actionUrl: nextTopic.actionUrl
+        title: `Learn ${nextEntry.topic.title} next`,
+        description: `Continue ${path.domain.name} with ${nextEntry.topic.title} in ${nextEntry.milestone.title}.`,
+        category: path.domain.name,
+        reason: `This is the next ${nextEntry.topic.difficulty.toLowerCase()} topic in your saved learning path.`,
+        priority: Math.max(2, 6 - difficultyWeight[nextEntry.topic.difficulty]),
+        nextTopic: {
+          title: nextEntry.topic.title,
+          difficulty: nextEntry.topic.difficulty,
+          subdomain: nextEntry.milestone.title
+        },
+        actionUrl: getTopicResource(nextEntry.topic)
       });
     }
 
-    const categoryAverage = averageProgress(categoryProgress);
+    const domainProgress = progressEntries.filter(
+      (item) => item.domain && String(item.domain) === String(path.domain._id)
+    );
+    const weakProgress = domainProgress
+      .filter((item) => item.progressPercentage < 60 || (item.accuracy !== null && item.accuracy < 65))
+      .sort((a, b) => a.progressPercentage - b.progressPercentage)[0];
 
-    if (categoryProgress.length > 0 && categoryAverage < 55) {
+    if (weakProgress) {
       freshRecommendations.push({
         user: userId,
+        domain: path.domain._id,
+        topic: weakProgress.topicRef,
         source: "rule-based",
-        title: `Strengthen your ${interest.name} fundamentals`,
-        description: `Your average progress in ${interest.name} is ${categoryAverage}%. Revisit weak areas before moving on.`,
-        category: interest.name,
-        reason: "Low average progress indicates that a review cycle will likely improve retention.",
-        priority: Math.min(5, interest.priority + 1),
-        actionUrl: nextTopic?.actionUrl || ""
+        title: `Review ${weakProgress.topic}`,
+        description: `Your current score in ${weakProgress.topic} is ${weakProgress.progressPercentage}%. Review it before increasing difficulty.`,
+        category: path.domain.name,
+        reason: "Low completion or accuracy suggests this is a weak area.",
+        priority: 5,
+        nextTopic: {
+          title: weakProgress.topic,
+          difficulty: weakProgress.difficulty,
+          subdomain: "Review"
+        },
+        actionUrl: ""
+      });
+    }
+
+    if (!nextEntry && domainProgress.length) {
+      const hardestCompleted = domainProgress
+        .filter((item) => item.completed)
+        .sort((a, b) => difficultyWeight[b.difficulty] - difficultyWeight[a.difficulty])[0];
+      const referenceTopic = hardestCompleted?.topicRef
+        ? progressByTopicId.get(String(hardestCompleted.topicRef))
+        : null;
+
+      freshRecommendations.push({
+        user: userId,
+        domain: path.domain._id,
+        topic: hardestCompleted?.topicRef,
+        source: "rule-based",
+        title: `Consolidate ${path.domain.name}`,
+        description: "You completed this roadmap. Revisit advanced questions or extend the domain catalog with a new subdomain.",
+        category: path.domain.name,
+        reason: "All saved path topics are completed.",
+        priority: 3,
+        nextTopic: {
+          title: referenceTopic?.topic || "Advanced practice",
+          difficulty: hardestCompleted?.difficulty || path.skillLevel,
+          subdomain: "Extension"
+        },
+        actionUrl: ""
       });
     }
   }
@@ -63,24 +144,66 @@ export const buildRuleBasedRecommendations = async (userId, interests, progressE
     await Recommendation.insertMany(freshRecommendations);
   }
 
-  return Recommendation.find({ user: userId, source: "rule-based" }).sort({ priority: -1, createdAt: -1 });
+  return Recommendation.find({ user: userId, source: "rule-based" })
+    .populate("domain")
+    .populate("topic")
+    .sort({ priority: -1, createdAt: -1 });
 };
 
 export const collectLearningSummary = async (userId) => {
-  const progressEntries = await Progress.find({ user: userId }).sort({ updatedAt: -1 });
+  const [progressEntries, paths] = await Promise.all([
+    Progress.find({ user: userId })
+      .populate("domain", "name slug category")
+      .populate("subdomain", "name slug")
+      .populate("topicRef", "title difficulty estimatedMinutes")
+      .sort({ updatedAt: -1 }),
+    LearningPath.find({ user: userId })
+      .populate("domain", "name slug category")
+      .populate("milestones.topics.topic", "title difficulty estimatedMinutes")
+      .sort({ updatedAt: -1 })
+  ]);
+
   const totalTopics = progressEntries.length;
   const completedTopics = progressEntries.filter((item) => item.completed).length;
-  const totalTimeSpentMinutes = progressEntries.reduce((sum, item) => sum + item.timeSpentMinutes, 0);
+  const totalTimeSpentMinutes = progressEntries.reduce(
+    (sum, item) => sum + item.timeSpentMinutes,
+    0
+  );
   const averageCompletion = averageProgress(progressEntries);
 
   const weakAreas = progressEntries
-    .filter((item) => item.progressPercentage < 60)
-    .slice(0, 5)
+    .filter((item) => item.progressPercentage < 60 || (item.accuracy !== null && item.accuracy < 65))
+    .slice(0, 6)
     .map((item) => ({
       topic: item.topic,
-      category: item.category,
-      progressPercentage: item.progressPercentage
+      domain: item.domain?.name || item.category,
+      subdomain: item.subdomain?.name || "General",
+      progressPercentage: item.progressPercentage,
+      accuracy: item.accuracy,
+      difficulty: item.difficulty
     }));
+
+  const progressByDomain = paths.map((path) => {
+    const pathTopicIds = new Set(
+      path.milestones.flatMap((milestone) =>
+        milestone.topics.map((entry) => String(entry.topic?._id || entry.topic))
+      )
+    );
+    const domainProgress = progressEntries.filter(
+      (item) => item.topicRef && pathTopicIds.has(String(item.topicRef._id || item.topicRef))
+    );
+
+    return {
+      domainId: path.domain?._id,
+      domain: path.domain?.name || "Domain",
+      category: path.domain?.category || "General",
+      skillLevel: path.skillLevel,
+      goal: path.goal,
+      totalPathTopics: pathTopicIds.size,
+      completedTopics: domainProgress.filter((item) => item.completed).length,
+      averageCompletion: averageProgress(domainProgress)
+    };
+  });
 
   return {
     totalTopics,
@@ -88,6 +211,8 @@ export const collectLearningSummary = async (userId) => {
     totalTimeSpentMinutes,
     averageCompletion,
     weakAreas,
+    progressByDomain,
+    activeLearningPaths: paths.length,
     recentTopics: progressEntries.slice(0, 5)
   };
 };
